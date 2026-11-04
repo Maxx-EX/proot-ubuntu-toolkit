@@ -13,13 +13,20 @@ class ProotLauncher(private val ctx: Context) {
             val rootfs = Settings.rootfs(ctx)
             File(rootfs).mkdirs()
 
-            val proot = "$nativeDir/libproot.so"
-            val loader = "$nativeDir/libproot_loader.so"
-            val talloc = "$nativeDir/libtalloc.so"
-            File(talloc).copyTo(File("$nativeDir/libtalloc.so.2"), overwrite = true)
+            // nativeLibraryDir 是只读的（/data/app/.../lib/arm64/），
+            // 不能往里写 libtalloc.so.2。把所有原生二进制复制到可写目录再运行。
+            val workDir = File(ctx.filesDir, "native").apply { mkdirs() }
+            val proot = File(workDir, "proot")
+            val loader = File(workDir, "libproot_loader.so")
+            val talloc = File(workDir, "libtalloc.so.2")
+
+            File(nativeDir, "libproot.so").copyTo(proot, overwrite = true)
+            File(nativeDir, "libproot_loader.so").copyTo(loader, overwrite = true)
+            File(nativeDir, "libtalloc.so").copyTo(talloc, overwrite = true)
+            proot.setExecutable(true, false)
 
             val cmd = arrayOf(
-                proot, "--link2symlink",
+                proot.absolutePath, "--link2symlink",
                 "-0", "-r", rootfs,
                 "-b", "/dev", "-b", "/proc", "-b", "/sys",
                 "-b", "${ctx.filesDir.absolutePath}:/home/developer",
@@ -33,9 +40,9 @@ class ProotLauncher(private val ctx: Context) {
             )
 
             val pb = ProcessBuilder(*cmd)
-            pb.environment()["PROOT_LOADER"] = loader
+            pb.environment()["PROOT_LOADER"] = loader.absolutePath
             pb.environment()["PROOT_NO_SECCOMP"] = "1"
-            pb.environment()["LD_LIBRARY_PATH"] = nativeDir
+            pb.environment()["LD_LIBRARY_PATH"] = workDir.absolutePath
             pb.redirectErrorStream(true)
             proc = pb.start()
             Thread {

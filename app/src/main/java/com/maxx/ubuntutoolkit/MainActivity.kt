@@ -85,13 +85,26 @@ class MainActivity : AppCompatActivity() {
     private fun startUbuntu(rootfsPath: String) {
         try {
             val nativeDir = applicationInfo.nativeLibraryDir
-            val proot = "$nativeDir/libproot.so"
-            val loader = "$nativeDir/libproot_loader.so"
-            File("$nativeDir/libtalloc.so").copyTo(File("$nativeDir/libtalloc.so.2"), overwrite = true)
+            // nativeLibraryDir 是只读的（/data/app/.../lib/arm64/），
+            // 不能往里写 libtalloc.so.2。把所有原生二进制复制到可写目录再运行。
+            val workDir = File(filesDir, "native").apply { mkdirs() }
+            val proot = File(workDir, "proot")
+            val loader = File(workDir, "libproot_loader.so")
+            val talloc = File(workDir, "libtalloc.so.2")
 
-            val pb = ProcessBuilder(proot, "--link2symlink", "-0", "-r", rootfsPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", "-w", "/root", "/bin/bash", "-c", "uname -a; sleep 3600")
-            pb.environment()["PROOT_LOADER"] = loader
+            File(nativeDir, "libproot.so").copyTo(proot, overwrite = true)
+            File(nativeDir, "libproot_loader.so").copyTo(loader, overwrite = true)
+            File(nativeDir, "libtalloc.so").copyTo(talloc, overwrite = true)
+            proot.setExecutable(true, false)
+
+            val pb = ProcessBuilder(
+                proot.absolutePath, "--link2symlink", "-0", "-r", rootfsPath,
+                "-b", "/dev", "-b", "/proc", "-b", "/sys",
+                "-w", "/root", "/bin/bash", "-c", "uname -a; sleep 3600"
+            )
+            pb.environment()["PROOT_LOADER"] = loader.absolutePath
             pb.environment()["PROOT_NO_SECCOMP"] = "1"
+            pb.environment()["LD_LIBRARY_PATH"] = workDir.absolutePath
             pb.redirectErrorStream(true)
             proc = pb.start()
             status.text = "Ubuntu 已启动"
