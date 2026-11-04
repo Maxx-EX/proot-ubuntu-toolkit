@@ -47,12 +47,10 @@ jobs:
 
           PROOT_PATH=$(awk '/^Package: proot$/{f=1} f&&/^Filename:/{print $2; exit}' Packages)
           [ -z "$PROOT_PATH" ] && { echo "proot not found in index"; exit 1; }
-          echo "proot path: $PROOT_PATH"
           curl -fLO "$BASE/$PROOT_PATH"
 
           TALLOC_PATH=$(awk '/^Package: libtalloc$/{f=1} f&&/^Filename:/{print $2; exit}' Packages)
           [ -z "$TALLOC_PATH" ] && { echo "libtalloc not found in index"; exit 1; }
-          echo "libtalloc path: $TALLOC_PATH"
           curl -fLO "$BASE/$TALLOC_PATH"
 
           dpkg-deb -x proot_*.deb proot_extract
@@ -65,7 +63,6 @@ jobs:
           cp talloc_extract/data/data/com.termux/files/usr/lib/libtalloc.so.2 \
              "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libtalloc.so"
           chmod +x "$GITHUB_WORKSPACE"/app/src/main/jniLibs/arm64-v8a/*.so
-          ls -la "$GITHUB_WORKSPACE"/app/src/main/jniLibs/arm64-v8a/
 
       - name: Build Ubuntu rootfs with full APK toolchain
         run: |
@@ -108,7 +105,6 @@ jobs:
             unzip -q /tmp/kotlin.zip -d /opt
             rm /tmp/kotlin.zip
 
-            # 用 echo 代替多行 heredoc，彻底避免 YAML 缩进问题
             echo "export ANDROID_HOME=/opt/android-sdk" > /etc/profile.d/android.sh
             echo "export ANDROID_SDK_ROOT=/opt/android-sdk" >> /etc/profile.d/android.sh
             echo "export JAVA_OPTS=\"-Xmx2g\"" >> /etc/profile.d/android.sh
@@ -116,20 +112,19 @@ jobs:
             chmod +x /etc/profile.d/android.sh
             ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
             ln -sf /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc
-
-            echo "=== Toolchain verify ==="
-            java -version
-            /opt/gradle-8.7/bin/gradle -v | head -5
-            /opt/kotlinc/bin/kotlinc -version
-            ls /opt/android-sdk/ndk/26.3.11579264/ | head
           '
+
+          # 【关键修复】清理 debootstrap 生成的虚拟挂载点，避免 zip 死循环
+          sudo rm -rf obb_input/dev/* obb_input/proc/* obb_input/sys/*
+          sudo mkdir -p obb_input/dev obb_input/proc obb_input/sys
 
           sudo du -sh obb_input
 
       - name: Package OBB
         run: |
           sudo chown -R $(id -u):$(id -g) obb_input
-          zip -r -0 "main.1.com.maxx.ubuntutoolkit.obb" obb_input
+          # 增加 -q（静默）和 -x（排除目录），防止警告刷屏
+          zip -r -q -0 "main.1.com.maxx.ubuntutoolkit.obb" obb_input -x "obb_input/dev/*" "obb_input/proc/*" "obb_input/sys/*"
           ls -lh *.obb
 
       - name: Build Release APK
