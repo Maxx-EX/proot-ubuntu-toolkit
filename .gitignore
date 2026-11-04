@@ -1,0 +1,15 @@
+# Gradle
+build/
+app/build/
+.gradle/
+local.properties
+
+# OBB 中间产物（不入库，由 CI 生成）
+obb_input/
+*.obb
+*.tar.gz
+*.tar.xz
+
+# 临时文件
+*.log
+.DS_Store
