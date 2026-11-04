@@ -1,6 +1,14 @@
 <resources>
-    <string name="app_name">UbuntuToolkit</string>
+    <string name="app_name">Ubuntu Toolkit</string>
+    <string name="status_ready">准备就绪</string>
+    <string name="status_running">Ubuntu 运行中</string>
     <string name="btn_start">启动 Ubuntu</string>
     <string name="btn_stop">停止</string>
-    <string name="status_ready">准备就绪</string>
+    <string name="btn_settings">设置</string>
+    <string name="settings_title">设置</string>
+    <string name="settings_rootfs">Rootfs 路径</string>
+    <string name="settings_log">输出日志路径</string>
+    <string name="settings_verbose">详细日志</string>
+    <string name="settings_save">保存</string>
+    <string name="settings_reset">恢复默认</string>
 </resources>

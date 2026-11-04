@@ -1,4 +1,4 @@
-name: Build UbuntuToolkit APK
+name: Build Ubuntu Toolkit
 
 on:
   push: { branches: [ master, main ] }
@@ -9,6 +9,7 @@ permissions: { contents: write }
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -17,21 +18,19 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v3
 
-      - name: Setup Android SDK / NDK
+      - name: Setup Android SDK / NDK (host)
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "platforms;android-34" "build-tools;34.0.0" \
             "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
 
-      - name: Fetch PRoot binaries from Termux
+      - name: Fetch PRoot from Termux
         run: |
           mkdir -p app/src/main/jniLibs/arm64-v8a
           cd /tmp
-          # 下载 Termux 官方 proot 和 libtalloc aarch64 .deb
           curl -fLO "https://packages.termux.dev/apt/termux-main/pool/main/p/proot/proot_5.1.107.92_aarch64.deb"
           curl -fLO "https://packages.termux.dev/apt/termux-main/pool/main/libt/libtalloc/libtalloc_2.4.3_aarch64.deb"
-          # 提取二进制
           dpkg-deb -x proot_*.deb proot_extract
           dpkg-deb -x libtalloc_*.deb talloc_extract
           cp proot_extract/data/data/com.termux/files/usr/bin/proot \
@@ -42,7 +41,7 @@ jobs:
              "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libtalloc.so"
           chmod +x "$GITHUB_WORKSPACE"/app/src/main/jniLibs/arm64-v8a/*.so
 
-      - name: Build ARM64 Ubuntu rootfs
+      - name: Build Ubuntu rootfs with full APK toolchain
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq debootstrap qemu-user-static binfmt-support
@@ -50,27 +49,75 @@ jobs:
           sudo debootstrap --arch=arm64 --foreign jammy obb_input http://ports.ubuntu.com/ubuntu-ports/
           sudo cp /usr/bin/qemu-aarch64-static obb_input/usr/bin/
           sudo chroot obb_input /debootstrap/debootstrap --second-stage
+
+          # 预装完整 APK 构建环境
           sudo chroot obb_input bash -c '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
             apt-get install -y --no-install-recommends \
-              build-essential gcc g++ make cmake git curl wget \
-              python3 python3-pip vim nano less tree ca-certificates
+              openjdk-17-jdk-headless unzip wget curl git ca-certificates \
+              build-essential python3 python3-pip vim nano less tree
             apt-get clean && rm -rf /var/lib/apt/lists/*
+
+            # 安装 Gradle 8.7
+            wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
+            mkdir -p /opt && unzip -q /tmp/gradle.zip -d /opt
+            rm /tmp/gradle.zip
+
+            # 安装 Android SDK cmdline-tools
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
+            mkdir -p /opt/android-sdk/cmdline-tools
+            unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools
+            mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+            rm /tmp/cmdline-tools.zip
+
+            export JAVA_OPTS="-Xmx2g"
+            export ANDROID_HOME=/opt/android-sdk
+            export ANDROID_SDK_ROOT=/opt/android-sdk
+            export PATH=\$PATH:/opt/android-sdk/cmdline-tools/latest/bin
+
+            yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+            /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+              "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
+              "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
+
+            # 安装 Kotlin 编译器
+            wget -q https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip -O /tmp/kotlin.zip
+            unzip -q /tmp/kotlin.zip -d /opt
+            rm /tmp/kotlin.zip
+
+            # 环境变量写入 profile
+            cat > /etc/profile.d/android.sh <<PROFILE
+            export ANDROID_HOME=/opt/android-sdk
+            export ANDROID_SDK_ROOT=/opt/android-sdk
+            export JAVA_OPTS="-Xmx2g"
+            export PATH=\$PATH:/opt/gradle-8.7/bin:/opt/kotlinc/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools
+            PROFILE
+            chmod +x /etc/profile.d/android.sh
+            ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
+            ln -sf /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc
+
+            echo "=== Toolchain verify ==="
+            java -version
+            /opt/gradle-8.7/bin/gradle -v | head -5
+            /opt/kotlinc/bin/kotlinc -version
+            ls /opt/android-sdk/ndk/26.3.11579264/ | head
           '
+
           sudo du -sh obb_input
 
-      - name: Package OBB (zip STORED fallback)
+      - name: Package OBB
         run: |
           JOBB="$ANDROID_HOME/cmdline-tools/latest/bin/jobb"
           if [ -x "$JOBB" ]; then
             sudo chown -R $(id -u):$(id -g) obb_input
             "$JOBB" -d obb_input -o "main.1.com.maxx.ubuntutoolkit.obb" \
-              -pn com.maxx.ubuntutoolkit -pv 1 -k "change-me" || \
+              -pn com.maxx.ubuntutoolkit -pv 1 -k "ubuntutoolkit-key" || \
             zip -r -0 "main.1.com.maxx.ubuntutoolkit.obb" obb_input
           else
             zip -r -0 "main.1.com.maxx.ubuntutoolkit.obb" obb_input
           fi
+          ls -lh *.obb
 
       - name: Build Release APK
         run: |
@@ -82,9 +129,11 @@ jobs:
         with:
           name: UbuntuToolkit-APK
           path: app/build/outputs/apk/release/app-release*.apk
+          retention-days: 30
 
       - name: Upload OBB
         uses: actions/upload-artifact@v4
         with:
           name: UbuntuToolkit-OBB
           path: main.1.com.maxx.ubuntutoolkit.obb
+          retention-days: 30
