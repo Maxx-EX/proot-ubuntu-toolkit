@@ -19,14 +19,27 @@ class MainActivity : AppCompatActivity() {
             status.text = "正在检查并解压 OBB..."
             Thread {
                 val rootfs = File(filesDir, "ubuntu")
+                // 假设用户把 OBB 放在 Android/obb/包名/ 下
                 val obbFile = File("/sdcard/Android/obb/$packageName/main.1.com.maxx.ubuntutoolkit.obb")
-                if (!rootfs.exists() && obbFile.exists()) {
+                
+                if (!rootfs.exists() || rootfs.list()?.isEmpty() == true) {
                     rootfs.mkdirs()
-                    // 调用系统 tar 解压
-                    val cmd = arrayOf("/system/bin/tar", "-xf", obbFile.absolutePath, "-C", rootfs.absolutePath)
-                    val p = Runtime.getRuntime().exec(cmd)
-                    p.waitFor()
+                    // 调用系统自带的 tar 解压 OBB 扩展包
+                    if (obbFile.exists()) {
+                        val cmd = arrayOf("/system/bin/tar", "-xf", obbFile.absolutePath, "-C", rootfs.absolutePath)
+                        try {
+                            val p = Runtime.getRuntime().exec(cmd)
+                            p.waitFor()
+                        } catch (e: Exception) {
+                            runOnUiThread { status.text = "解压失败: ${e.message}" }
+                            return@Thread
+                        }
+                    } else {
+                        runOnUiThread { status.text = "未找到 OBB 文件，请先放入指定目录" }
+                        return@Thread
+                    }
                 }
+                
                 runOnUiThread {
                     status.text = "正在启动 PRoot..."
                     startUbuntu(rootfs.absolutePath)

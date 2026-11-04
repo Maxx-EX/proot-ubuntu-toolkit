@@ -4,8 +4,7 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="Ubuntu Toolkit"
-        android:theme="@style/Theme.UbuntuToolkit"
-        android:extractNativeLibs="true">
+        android:theme="@style/Theme.UbuntuToolkit">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
