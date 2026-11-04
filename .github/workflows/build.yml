@@ -9,7 +9,7 @@ permissions: { contents: write }
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -25,14 +25,39 @@ jobs:
             "platforms;android-34" "build-tools;34.0.0" \
             "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
 
-      - name: Fetch PRoot from Termux
+      - name: Fetch PRoot from Termux (dynamic version)
         run: |
+          set -e
           mkdir -p app/src/main/jniLibs/arm64-v8a
           cd /tmp
-          curl -fLO "https://packages.termux.dev/apt/termux-main/pool/main/p/proot/proot_5.1.107.92_aarch64.deb"
-          curl -fLO "https://packages.termux.dev/apt/termux-main/pool/main/libt/libtalloc/libtalloc_2.4.3_aarch64.deb"
+
+          BASE="https://packages.termux.dev/apt/termux-main"
+          IDX="$BASE/dists/stable/main/binary-aarch64"
+
+          # 下载并解压 Packages 索引（优先 gz，回退未压缩）
+          if curl -fsSL "$IDX/Packages.gz" -o Packages.gz 2>/dev/null; then
+            gunzip -f Packages.gz
+          else
+            curl -fsSL "$IDX/Packages" -o Packages
+          fi
+
+          # 动态解析 proot 的 Filename
+          PROOT_PATH=$(awk '/^Package: proot$/{f=1} f&&/^Filename:/{print $2; exit}' Packages)
+          [ -z "$PROOT_PATH" ] && { echo "proot not found in index"; exit 1; }
+          echo "proot path: $PROOT_PATH"
+          curl -fLO "$BASE/$PROOT_PATH"
+
+          # 动态解析 libtalloc 的 Filename
+          TALLOC_PATH=$(awk '/^Package: libtalloc$/{f=1} f&&/^Filename:/{print $2; exit}' Packages)
+          [ -z "$TALLOC_PATH" ] && { echo "libtalloc not found in index"; exit 1; }
+          echo "libtalloc path: $TALLOC_PATH"
+          curl -fLO "$BASE/$TALLOC_PATH"
+
+          # 解压 deb
           dpkg-deb -x proot_*.deb proot_extract
           dpkg-deb -x libtalloc_*.deb talloc_extract
+
+          # 拷入 jniLibs 并重命名为 lib*.so
           cp proot_extract/data/data/com.termux/files/usr/bin/proot \
              "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libproot.so"
           cp proot_extract/data/data/com.termux/files/usr/libexec/proot/loader \
@@ -40,6 +65,7 @@ jobs:
           cp talloc_extract/data/data/com.termux/files/usr/lib/libtalloc.so.2 \
              "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libtalloc.so"
           chmod +x "$GITHUB_WORKSPACE"/app/src/main/jniLibs/arm64-v8a/*.so
+          ls -la "$GITHUB_WORKSPACE"/app/src/main/jniLibs/arm64-v8a/
 
       - name: Build Ubuntu rootfs with full APK toolchain
         run: |
@@ -50,7 +76,6 @@ jobs:
           sudo cp /usr/bin/qemu-aarch64-static obb_input/usr/bin/
           sudo chroot obb_input /debootstrap/debootstrap --second-stage
 
-          # 预装完整 APK 构建环境
           sudo chroot obb_input bash -c '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
@@ -59,12 +84,12 @@ jobs:
               build-essential python3 python3-pip vim nano less tree
             apt-get clean && rm -rf /var/lib/apt/lists/*
 
-            # 安装 Gradle 8.7
+            # Gradle 8.7
             wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
             mkdir -p /opt && unzip -q /tmp/gradle.zip -d /opt
             rm /tmp/gradle.zip
 
-            # 安装 Android SDK cmdline-tools
+            # Android cmdline-tools
             wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
             mkdir -p /opt/android-sdk/cmdline-tools
             unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools
@@ -74,25 +99,25 @@ jobs:
             export JAVA_OPTS="-Xmx2g"
             export ANDROID_HOME=/opt/android-sdk
             export ANDROID_SDK_ROOT=/opt/android-sdk
-            export PATH=\$PATH:/opt/android-sdk/cmdline-tools/latest/bin
+            export PATH=$PATH:/opt/android-sdk/cmdline-tools/latest/bin
 
             yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
             /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager \
               "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
               "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
 
-            # 安装 Kotlin 编译器
+            # Kotlin 1.9.24
             wget -q https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip -O /tmp/kotlin.zip
             unzip -q /tmp/kotlin.zip -d /opt
             rm /tmp/kotlin.zip
 
-            # 环境变量写入 profile
+            # 写入 profile
             cat > /etc/profile.d/android.sh <<PROFILE
-            export ANDROID_HOME=/opt/android-sdk
-            export ANDROID_SDK_ROOT=/opt/android-sdk
-            export JAVA_OPTS="-Xmx2g"
-            export PATH=\$PATH:/opt/gradle-8.7/bin:/opt/kotlinc/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools
-            PROFILE
+export ANDROID_HOME=/opt/android-sdk
+export ANDROID_SDK_ROOT=/opt/android-sdk
+export JAVA_OPTS="-Xmx2g"
+export PATH=\$PATH:/opt/gradle-8.7/bin:/opt/kotlinc/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools
+PROFILE
             chmod +x /etc/profile.d/android.sh
             ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
             ln -sf /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc
@@ -108,15 +133,8 @@ jobs:
 
       - name: Package OBB
         run: |
-          JOBB="$ANDROID_HOME/cmdline-tools/latest/bin/jobb"
-          if [ -x "$JOBB" ]; then
-            sudo chown -R $(id -u):$(id -g) obb_input
-            "$JOBB" -d obb_input -o "main.1.com.maxx.ubuntutoolkit.obb" \
-              -pn com.maxx.ubuntutoolkit -pv 1 -k "ubuntutoolkit-key" || \
-            zip -r -0 "main.1.com.maxx.ubuntutoolkit.obb" obb_input
-          else
-            zip -r -0 "main.1.com.maxx.ubuntutoolkit.obb" obb_input
-          fi
+          sudo chown -R $(id -u):$(id -g) obb_input
+          zip -r -0 "main.1.com.maxx.ubuntutoolkit.obb" obb_input
           ls -lh *.obb
 
       - name: Build Release APK
