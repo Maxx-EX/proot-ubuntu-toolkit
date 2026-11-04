@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">UbuntuToolkit</string>
+    <string name="btn_start">启动 Ubuntu</string>
+    <string name="btn_stop">停止</string>
+    <string name="status_ready">准备就绪</string>
+</resources>
