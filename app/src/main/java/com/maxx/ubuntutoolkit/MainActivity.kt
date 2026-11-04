@@ -1,14 +1,60 @@
 package com.maxx.ubuntutoolkit
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private var proc: Process? = null
+
+    // 注册文件选择器
+    private val pickObbLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri = result.data?.data
+            if (uri != null) {
+                status.text = "正在准备解压 OBB，请稍候..."
+                Thread {
+                    try {
+                        // 1. 先把选中的文件拷贝到应用的缓存目录
+                        val cacheTar = File(cacheDir, "temp_obb.tar")
+                        contentResolver.openInputStream(uri)?.use { input ->
+                            FileOutputStream(cacheTar).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+
+                        // 2. 准备解压路径
+                        val rootfs = File(filesDir, "ubuntu")
+                        if (rootfs.exists()) rootfs.deleteRecursively()
+                        rootfs.mkdirs()
+
+                        // 3. 调用系统 tar 解压
+                        runOnUiThread { status.text = "正在解压 Ubuntu 系统 (约需1-3分钟)..." }
+                        val cmd = arrayOf("/system/bin/tar", "-xf", cacheTar.absolutePath, "-C", rootfs.absolutePath)
+                        val p = Runtime.getRuntime().exec(cmd)
+                        p.waitFor()
+
+                        // 4. 清理临时文件
+                        cacheTar.delete()
+
+                        runOnUiThread {
+                            status.text = "正在启动 PRoot..."
+                            startUbuntu(rootfs.absolutePath)
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread { status.text = "解压失败: ${e.message}" }
+                    }
+                }.start()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -16,35 +62,18 @@ class MainActivity : AppCompatActivity() {
         status = findViewById(R.id.statusText)
 
         findViewById<Button>(R.id.btnStart).setOnClickListener {
-            status.text = "正在检查并解压 OBB..."
-            Thread {
-                val rootfs = File(filesDir, "ubuntu")
-                // 假设用户把 OBB 放在 Android/obb/包名/ 下
-                val obbFile = File("/sdcard/Android/obb/$packageName/main.1.com.maxx.ubuntutoolkit.obb")
-                
-                if (!rootfs.exists() || rootfs.list()?.isEmpty() == true) {
-                    rootfs.mkdirs()
-                    // 调用系统自带的 tar 解压 OBB 扩展包
-                    if (obbFile.exists()) {
-                        val cmd = arrayOf("/system/bin/tar", "-xf", obbFile.absolutePath, "-C", rootfs.absolutePath)
-                        try {
-                            val p = Runtime.getRuntime().exec(cmd)
-                            p.waitFor()
-                        } catch (e: Exception) {
-                            runOnUiThread { status.text = "解压失败: ${e.message}" }
-                            return@Thread
-                        }
-                    } else {
-                        runOnUiThread { status.text = "未找到 OBB 文件，请先放入指定目录" }
-                        return@Thread
-                    }
-                }
-                
-                runOnUiThread {
-                    status.text = "正在启动 PRoot..."
-                    startUbuntu(rootfs.absolutePath)
-                }
-            }.start()
+            val rootfs = File(filesDir, "ubuntu")
+            // 如果已经解压过了，直接启动
+            if (rootfs.exists() && rootfs.list()?.isNotEmpty() == true) {
+                status.text = "正在启动 PRoot..."
+                startUbuntu(rootfs.absolutePath)
+            } else {
+                // 如果没解压，弹出文件选择器
+                status.text = "请选择你下载的 OBB 文件"
+                val intent = Intent(Intent.ACTION_GET_CONTENT)
+                intent.type = "*/*"
+                pickObbLauncher.launch(intent)
+            }
         }
 
         findViewById<Button>(R.id.btnStop).setOnClickListener {
