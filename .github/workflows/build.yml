@@ -13,6 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo docker system prune -af
+
       - uses: actions/setup-java@v4
         with: { java-version: '17', distribution: 'temurin' }
 
@@ -34,30 +39,25 @@ jobs:
           BASE="https://packages.termux.dev/apt/termux-main"
           IDX="$BASE/dists/stable/main/binary-aarch64"
 
-          # 下载并解压 Packages 索引（优先 gz，回退未压缩）
           if curl -fsSL "$IDX/Packages.gz" -o Packages.gz 2>/dev/null; then
             gunzip -f Packages.gz
           else
             curl -fsSL "$IDX/Packages" -o Packages
           fi
 
-          # 动态解析 proot 的 Filename
           PROOT_PATH=$(awk '/^Package: proot$/{f=1} f&&/^Filename:/{print $2; exit}' Packages)
           [ -z "$PROOT_PATH" ] && { echo "proot not found in index"; exit 1; }
           echo "proot path: $PROOT_PATH"
           curl -fLO "$BASE/$PROOT_PATH"
 
-          # 动态解析 libtalloc 的 Filename
           TALLOC_PATH=$(awk '/^Package: libtalloc$/{f=1} f&&/^Filename:/{print $2; exit}' Packages)
           [ -z "$TALLOC_PATH" ] && { echo "libtalloc not found in index"; exit 1; }
           echo "libtalloc path: $TALLOC_PATH"
           curl -fLO "$BASE/$TALLOC_PATH"
 
-          # 解压 deb
           dpkg-deb -x proot_*.deb proot_extract
           dpkg-deb -x libtalloc_*.deb talloc_extract
 
-          # 拷入 jniLibs 并重命名为 lib*.so
           cp proot_extract/data/data/com.termux/files/usr/bin/proot \
              "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libproot.so"
           cp proot_extract/data/data/com.termux/files/usr/libexec/proot/loader \
@@ -84,12 +84,10 @@ jobs:
               build-essential python3 python3-pip vim nano less tree
             apt-get clean && rm -rf /var/lib/apt/lists/*
 
-            # Gradle 8.7
             wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
             mkdir -p /opt && unzip -q /tmp/gradle.zip -d /opt
             rm /tmp/gradle.zip
 
-            # Android cmdline-tools
             wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
             mkdir -p /opt/android-sdk/cmdline-tools
             unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools
@@ -106,18 +104,15 @@ jobs:
               "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
               "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
 
-            # Kotlin 1.9.24
             wget -q https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip -O /tmp/kotlin.zip
             unzip -q /tmp/kotlin.zip -d /opt
             rm /tmp/kotlin.zip
 
-            # 写入 profile
-            cat > /etc/profile.d/android.sh <<PROFILE
-export ANDROID_HOME=/opt/android-sdk
-export ANDROID_SDK_ROOT=/opt/android-sdk
-export JAVA_OPTS="-Xmx2g"
-export PATH=\$PATH:/opt/gradle-8.7/bin:/opt/kotlinc/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools
-PROFILE
+            # 用 echo 代替多行 heredoc，彻底避免 YAML 缩进问题
+            echo "export ANDROID_HOME=/opt/android-sdk" > /etc/profile.d/android.sh
+            echo "export ANDROID_SDK_ROOT=/opt/android-sdk" >> /etc/profile.d/android.sh
+            echo "export JAVA_OPTS=\"-Xmx2g\"" >> /etc/profile.d/android.sh
+            echo "export PATH=\$PATH:/opt/gradle-8.7/bin:/opt/kotlinc/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools" >> /etc/profile.d/android.sh
             chmod +x /etc/profile.d/android.sh
             ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
             ln -sf /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc
