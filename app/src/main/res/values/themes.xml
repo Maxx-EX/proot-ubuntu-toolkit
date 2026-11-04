@@ -1,10 +1,6 @@
 <resources>
     <style name="Theme.UbuntuToolkit" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/ubuntu_orange</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
         <item name="android:windowBackground">@drawable/bg_gradient</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

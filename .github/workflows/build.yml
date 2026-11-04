@@ -30,44 +30,26 @@ jobs:
             "platforms;android-34" "build-tools;34.0.0" \
             "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
 
-      - name: Fetch PRoot from Termux (dynamic version)
+      - name: Fetch PRoot from Termux
         run: |
           set -e
           mkdir -p app/src/main/jniLibs/arm64-v8a
           cd /tmp
-
           BASE="https://packages.termux.dev/apt/termux-main"
           IDX="$BASE/dists/stable/main/binary-aarch64"
-
-          if curl -fsSL "$IDX/Packages.gz" -o Packages.gz 2>/dev/null; then
-            gunzip -f Packages.gz
-          else
-            curl -fsSL "$IDX/Packages" -o Packages
-          fi
-
+          if curl -fsSL "$IDX/Packages.gz" -o Packages.gz 2>/dev/null; then gunzip -f Packages.gz; else curl -fsSL "$IDX/Packages" -o Packages; fi
           PROOT_PATH=$(awk '/^Package: proot$/{f=1} f&&/^Filename:/{print $2; exit}' Packages)
-          [ -z "$PROOT_PATH" ] && { echo "proot not found in index"; exit 1; }
-          echo "proot path: $PROOT_PATH"
-          curl -fLO "$BASE/$PROOT_PATH"
-
           TALLOC_PATH=$(awk '/^Package: libtalloc$/{f=1} f&&/^Filename:/{print $2; exit}' Packages)
-          [ -z "$TALLOC_PATH" ] && { echo "libtalloc not found in index"; exit 1; }
-          echo "libtalloc path: $TALLOC_PATH"
+          curl -fLO "$BASE/$PROOT_PATH"
           curl -fLO "$BASE/$TALLOC_PATH"
-
           dpkg-deb -x proot_*.deb proot_extract
           dpkg-deb -x libtalloc_*.deb talloc_extract
-
-          cp proot_extract/data/data/com.termux/files/usr/bin/proot \
-             "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libproot.so"
-          cp proot_extract/data/data/com.termux/files/usr/libexec/proot/loader \
-             "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libproot_loader.so"
-          cp talloc_extract/data/data/com.termux/files/usr/lib/libtalloc.so.2 \
-             "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libtalloc.so"
+          cp proot_extract/data/data/com.termux/files/usr/bin/proot "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libproot.so"
+          cp proot_extract/data/data/com.termux/files/usr/libexec/proot/loader "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libproot_loader.so"
+          cp talloc_extract/data/data/com.termux/files/usr/lib/libtalloc.so.2 "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libtalloc.so"
           chmod +x "$GITHUB_WORKSPACE"/app/src/main/jniLibs/arm64-v8a/*.so
-          ls -la "$GITHUB_WORKSPACE"/app/src/main/jniLibs/arm64-v8a/
 
-      - name: Build Ubuntu rootfs with full APK toolchain
+      - name: Build Ubuntu rootfs
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq debootstrap qemu-user-static binfmt-support
@@ -75,39 +57,22 @@ jobs:
           sudo debootstrap --arch=arm64 --foreign jammy obb_input http://ports.ubuntu.com/ubuntu-ports/
           sudo cp /usr/bin/qemu-aarch64-static obb_input/usr/bin/
           sudo chroot obb_input /debootstrap/debootstrap --second-stage
-
           sudo chroot obb_input bash -c '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
-            apt-get install -y --no-install-recommends \
-              openjdk-17-jdk-headless unzip wget curl git ca-certificates \
-              build-essential python3 python3-pip vim nano less tree
+            apt-get install -y --no-install-recommends openjdk-17-jdk-headless unzip wget curl git ca-certificates build-essential python3 python3-pip vim nano less tree
             apt-get clean && rm -rf /var/lib/apt/lists/*
-
             wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
-            mkdir -p /opt && unzip -q /tmp/gradle.zip -d /opt
-            rm /tmp/gradle.zip
-
+            mkdir -p /opt && unzip -q /tmp/gradle.zip -d /opt && rm /tmp/gradle.zip
             wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
-            mkdir -p /opt/android-sdk/cmdline-tools
-            unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools
-            mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
-            rm /tmp/cmdline-tools.zip
-
-            export JAVA_OPTS="-Xmx2g"
-            export ANDROID_HOME=/opt/android-sdk
-            export ANDROID_SDK_ROOT=/opt/android-sdk
+            mkdir -p /opt/android-sdk/cmdline-tools && unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools
+            mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest && rm /tmp/cmdline-tools.zip
+            export JAVA_OPTS="-Xmx2g" ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk
             export PATH=$PATH:/opt/android-sdk/cmdline-tools/latest/bin
-
             yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
-            /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager \
-              "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
-              "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
-
+            /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
             wget -q https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip -O /tmp/kotlin.zip
-            unzip -q /tmp/kotlin.zip -d /opt
-            rm /tmp/kotlin.zip
-
+            unzip -q /tmp/kotlin.zip -d /opt && rm /tmp/kotlin.zip
             echo "export ANDROID_HOME=/opt/android-sdk" > /etc/profile.d/android.sh
             echo "export ANDROID_SDK_ROOT=/opt/android-sdk" >> /etc/profile.d/android.sh
             echo "export JAVA_OPTS=\"-Xmx2g\"" >> /etc/profile.d/android.sh
@@ -116,7 +81,6 @@ jobs:
             ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
             ln -sf /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc
           '
-
           sudo rm -rf obb_input/dev obb_input/proc obb_input/sys
           sudo du -sh obb_input
 
@@ -128,7 +92,11 @@ jobs:
 
       - name: Build Release APK
         run: |
-          chmod +x gradlew 2>/dev/null || true
+          # 如果没有 gradlew，自动生成
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper --gradle-version 8.7
+          fi
+          chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Upload APK
@@ -136,11 +104,9 @@ jobs:
         with:
           name: UbuntuToolkit-APK
           path: app/build/outputs/apk/release/app-release*.apk
-          retention-days: 30
 
       - name: Upload OBB
         uses: actions/upload-artifact@v4
         with:
           name: UbuntuToolkit-OBB
           path: main.1.com.maxx.ubuntutoolkit.obb
-          retention-days: 30
