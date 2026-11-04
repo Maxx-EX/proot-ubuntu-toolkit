@@ -101,7 +101,7 @@ jobs:
             ln -sf /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc
 
             # 安装 ai 命令行工具（OpenAI 兼容 API）
-            cat > /usr/local/bin/ai << 'AIEOF'
+            cat > /usr/local/bin/ai << AIEOF
 #!/usr/bin/env python3
 import os, sys, json, urllib.request, urllib.error
 
