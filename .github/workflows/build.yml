@@ -120,12 +120,66 @@ jobs:
 
           sudo du -sh obb_input
 
-      - name: Package OBB
-        run: |
-          sudo chown -R $(id -u):$(id -g) obb_input
-          # 增加 -q（静默）和 -x（排除目录），防止警告刷屏
-          zip -r -q -0 "main.1.com.maxx.ubuntutoolkit.obb" obb_input -x "obb_input/dev/*" "obb_input/proc/*" "obb_input/sys/*"
-          ls -lh *.obb
+      - name: Build Ubuntu rootfs with full APK toolchain
+  run: |
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq debootstrap qemu-user-static binfmt-support
+    sudo rm -rf obb_input && sudo mkdir -p obb_input
+    sudo debootstrap --arch=arm64 --foreign jammy obb_input http://ports.ubuntu.com/ubuntu-ports/
+    sudo cp /usr/bin/qemu-aarch64-static obb_input/usr/bin/
+    sudo chroot obb_input /debootstrap/debootstrap --second-stage
+
+    sudo chroot obb_input bash -c '
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      apt-get install -y --no-install-recommends \
+        openjdk-17-jdk-headless unzip wget curl git ca-certificates \
+        build-essential python3 python3-pip vim nano less tree
+      apt-get clean && rm -rf /var/lib/apt/lists/*
+
+      wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
+      mkdir -p /opt && unzip -q /tmp/gradle.zip -d /opt
+      rm /tmp/gradle.zip
+
+      wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
+      mkdir -p /opt/android-sdk/cmdline-tools
+      unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools
+      mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+      rm /tmp/cmdline-tools.zip
+
+      export JAVA_OPTS="-Xmx2g"
+      export ANDROID_HOME=/opt/android-sdk
+      export ANDROID_SDK_ROOT=/opt/android-sdk
+      export PATH=$PATH:/opt/android-sdk/cmdline-tools/latest/bin
+
+      yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+      /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+        "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
+        "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
+
+      wget -q https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip -O /tmp/kotlin.zip
+      unzip -q /tmp/kotlin.zip -d /opt
+      rm /tmp/kotlin.zip
+
+      echo "export ANDROID_HOME=/opt/android-sdk" > /etc/profile.d/android.sh
+      echo "export ANDROID_SDK_ROOT=/opt/android-sdk" >> /etc/profile.d/android.sh
+      echo "export JAVA_OPTS=\"-Xmx2g\"" >> /etc/profile.d/android.sh
+      echo "export PATH=\$PATH:/opt/gradle-8.7/bin:/opt/kotlinc/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools" >> /etc/profile.d/android.sh
+      chmod +x /etc/profile.d/android.sh
+      ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
+      ln -sf /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc
+    '
+
+    # 【关键提速】彻底删除系统虚拟目录，防止卡死！
+    sudo rm -rf obb_input/dev obb_input/proc obb_input/sys
+    sudo du -sh obb_input
+
+- name: Package OBB (用 tar 打包极速完成)
+  run: |
+    # 直接打包为 tar，不用 zip，防止任何管道/软链接卡死
+    sudo tar -cf "main.1.com.maxx.ubuntutoolkit.obb" -C obb_input .
+    sudo chown $(id -u):$(id -g) "main.1.com.maxx.ubuntutoolkit.obb"
+    ls -lh *.obb
 
       - name: Build Release APK
         run: |
