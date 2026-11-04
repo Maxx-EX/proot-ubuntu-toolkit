@@ -13,20 +13,17 @@ class ProotLauncher(private val ctx: Context) {
             val rootfs = Settings.rootfs(ctx)
             File(rootfs).mkdirs()
 
-            // nativeLibraryDir 是只读的（/data/app/.../lib/arm64/），
-            // 不能往里写 libtalloc.so.2。把所有原生二进制复制到可写目录再运行。
+            // nativeLibraryDir 只读，不能写 libtalloc.so.2；
+            // 但 filesDir 不可 exec（Android 10+ W^X），proot/loader 必须留在 nativeLibraryDir。
+            // 只把 libtalloc.so.2 复制到可写目录，LD_LIBRARY_PATH 指过去。
             val workDir = File(ctx.filesDir, "native").apply { mkdirs() }
-            val proot = File(workDir, "proot")
-            val loader = File(workDir, "libproot_loader.so")
-            val talloc = File(workDir, "libtalloc.so.2")
+            File(nativeDir, "libtalloc.so").copyTo(File(workDir, "libtalloc.so.2"), overwrite = true)
 
-            File(nativeDir, "libproot.so").copyTo(proot, overwrite = true)
-            File(nativeDir, "libproot_loader.so").copyTo(loader, overwrite = true)
-            File(nativeDir, "libtalloc.so").copyTo(talloc, overwrite = true)
-            proot.setExecutable(true, false)
+            val proot = "$nativeDir/libproot.so"
+            val loader = "$nativeDir/libproot_loader.so"
 
             val cmd = arrayOf(
-                proot.absolutePath, "--link2symlink",
+                proot, "--link2symlink",
                 "-0", "-r", rootfs,
                 "-b", "/dev", "-b", "/proc", "-b", "/sys",
                 "-b", "${ctx.filesDir.absolutePath}:/home/developer",
@@ -40,9 +37,12 @@ class ProotLauncher(private val ctx: Context) {
             )
 
             val pb = ProcessBuilder(*cmd)
-            pb.environment()["PROOT_LOADER"] = loader.absolutePath
+            pb.environment()["PROOT_LOADER"] = loader
             pb.environment()["PROOT_NO_SECCOMP"] = "1"
-            pb.environment()["LD_LIBRARY_PATH"] = workDir.absolutePath
+            pb.environment()["LD_LIBRARY_PATH"] = "$nativeDir:${workDir.absolutePath}"
+            pb.environment()["OPENAI_BASE_URL"] = Settings.aiBaseUrl(ctx)
+            pb.environment()["OPENAI_API_KEY"] = Settings.aiApiKey(ctx)
+            pb.environment()["OPENAI_MODEL"] = Settings.aiModel(ctx)
             pb.redirectErrorStream(true)
             proc = pb.start()
             Thread {

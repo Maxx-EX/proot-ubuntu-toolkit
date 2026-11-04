@@ -80,31 +80,41 @@ class MainActivity : AppCompatActivity() {
             proc?.destroy(); proc = null
             status.text = "已停止"
         }
+
+        findViewById<Button>(R.id.btnChat).setOnClickListener {
+            startActivity(Intent(this, ChatActivity::class.java))
+        }
+
+        findViewById<Button>(R.id.btnSettings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
     }
 
     private fun startUbuntu(rootfsPath: String) {
         try {
             val nativeDir = applicationInfo.nativeLibraryDir
-            // nativeLibraryDir 是只读的（/data/app/.../lib/arm64/），
-            // 不能往里写 libtalloc.so.2。把所有原生二进制复制到可写目录再运行。
+            // nativeLibraryDir 是只读的，不能往里写 libtalloc.so.2。
+            // 但 proot/loader 必须从 nativeLibraryDir 执行（Android 10+ 的 filesDir 不可 exec）。
+            // 只把 libtalloc.so.2 复制到可写目录，用 LD_LIBRARY_PATH 指过去。
             val workDir = File(filesDir, "native").apply { mkdirs() }
-            val proot = File(workDir, "proot")
-            val loader = File(workDir, "libproot_loader.so")
             val talloc = File(workDir, "libtalloc.so.2")
-
-            File(nativeDir, "libproot.so").copyTo(proot, overwrite = true)
-            File(nativeDir, "libproot_loader.so").copyTo(loader, overwrite = true)
             File(nativeDir, "libtalloc.so").copyTo(talloc, overwrite = true)
-            proot.setExecutable(true, false)
+
+            val proot = "$nativeDir/libproot.so"
+            val loader = "$nativeDir/libproot_loader.so"
 
             val pb = ProcessBuilder(
-                proot.absolutePath, "--link2symlink", "-0", "-r", rootfsPath,
+                proot, "--link2symlink", "-0", "-r", rootfsPath,
                 "-b", "/dev", "-b", "/proc", "-b", "/sys",
                 "-w", "/root", "/bin/bash", "-c", "uname -a; sleep 3600"
             )
-            pb.environment()["PROOT_LOADER"] = loader.absolutePath
+            pb.environment()["PROOT_LOADER"] = loader
             pb.environment()["PROOT_NO_SECCOMP"] = "1"
-            pb.environment()["LD_LIBRARY_PATH"] = workDir.absolutePath
+            pb.environment()["LD_LIBRARY_PATH"] = "$nativeDir:${workDir.absolutePath}"
+            // 传递 AI 配置给终端里的 ai 命令
+            pb.environment()["OPENAI_BASE_URL"] = Settings.aiBaseUrl(this)
+            pb.environment()["OPENAI_API_KEY"] = Settings.aiApiKey(this)
+            pb.environment()["OPENAI_MODEL"] = Settings.aiModel(this)
             pb.redirectErrorStream(true)
             proc = pb.start()
             status.text = "Ubuntu 已启动"

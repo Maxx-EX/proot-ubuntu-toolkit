@@ -99,6 +99,43 @@ jobs:
             chmod +x /etc/profile.d/android.sh
             ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
             ln -sf /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc
+
+            # 安装 ai 命令行工具（OpenAI 兼容 API）
+            cat > /usr/local/bin/ai << 'AIEOF'
+#!/usr/bin/env python3
+import os, sys, json, urllib.request, urllib.error
+
+base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+key  = os.environ.get("OPENAI_API_KEY", "")
+model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+if not key:
+    print("⚠️ 未设置 OPENAI_API_KEY，请先在 APP 设置页填入 API Key"); sys.exit(1)
+
+prompt = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else input("你: ")
+if not prompt.strip():
+    print("用法: ai 你的问题  或  ai"); sys.exit(0)
+
+body = json.dumps({
+    "model": model,
+    "messages": [{"role": "user", "content": prompt}],
+    "stream": False
+}).encode()
+
+req = urllib.request.Request(f"{base}/chat/completions", data=body, headers={
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {key}"
+})
+try:
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read())
+    print(data["choices"][0]["message"]["content"])
+except urllib.error.HTTPError as e:
+    print(f"❌ HTTP {e.code}: {e.read().decode()[:500]}")
+except Exception as e:
+    print(f"❌ {e}")
+AIEOF
+            chmod +x /usr/local/bin/ai
           '
           
           sudo rm -rf obb_input/dev obb_input/proc obb_input/sys

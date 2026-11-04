@@ -60,6 +60,84 @@
                 android:padding="12dp"/>
         </LinearLayout>
 
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="AI 配置（OpenAI 兼容）" android:textSize="16sp"
+            android:textColor="@color/text_primary" android:textStyle="bold"
+            android:layout_marginBottom="12dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="20dp"
+            android:background="@drawable/bg_card_glass"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="API Base URL" android:textSize="14sp"
+                android:textColor="@color/text_primary" android:textStyle="bold"/>
+
+            <EditText
+                android:id="@+id/etAiBaseUrl"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:hint="https://api.openai.com/v1"
+                android:textSize="13sp"
+                android:inputType="textUri"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_btn_secondary"
+                android:padding="12dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="20dp"
+            android:background="@drawable/bg_card_glass"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="API Key" android:textSize="14sp"
+                android:textColor="@color/text_primary" android:textStyle="bold"/>
+
+            <EditText
+                android:id="@+id/etAiApiKey"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:hint="sk-..."
+                android:textSize="13sp"
+                android:inputType="textPassword"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_btn_secondary"
+                android:padding="12dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="20dp"
+            android:background="@drawable/bg_card_glass"
+            android:layout_marginBottom="24dp">
+
+            <TextView
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="模型名称" android:textSize="14sp"
+                android:textColor="@color/text_primary" android:textStyle="bold"/>
+
+            <EditText
+                android:id="@+id/etAiModel"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:hint="gpt-4o-mini / deepseek-chat / doubao-pro-..."
+                android:textSize="13sp"
+                android:inputType="text"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_btn_secondary"
+                android:padding="12dp"/>
+        </LinearLayout>
+
         <LinearLayout
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:gravity="center_vertical"

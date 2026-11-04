@@ -15,16 +15,25 @@ class SettingsActivity : AppCompatActivity() {
 
         val etRootfs = findViewById<EditText>(R.id.etRootfs)
         val etLog = findViewById<EditText>(R.id.etLog)
+        val etAiBaseUrl = findViewById<EditText>(R.id.etAiBaseUrl)
+        val etAiApiKey = findViewById<EditText>(R.id.etAiApiKey)
+        val etAiModel = findViewById<EditText>(R.id.etAiModel)
         val swVerbose = findViewById<Switch>(R.id.swVerbose)
 
         etRootfs.setText(Settings.rootfs(this))
         etLog.setText(Settings.log(this))
+        etAiBaseUrl.setText(Settings.aiBaseUrl(this))
+        etAiApiKey.setText(Settings.aiApiKey(this))
+        etAiModel.setText(Settings.aiModel(this))
         swVerbose.isChecked = Settings.verbose(this)
 
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             p.edit()
                 .putString(Settings.KEY_ROOTFS, etRootfs.text.toString())
                 .putString(Settings.KEY_LOG, etLog.text.toString())
+                .putString(Settings.KEY_AI_BASE_URL, etAiBaseUrl.text.toString().trim())
+                .putString(Settings.KEY_AI_API_KEY, etAiApiKey.text.toString().trim())
+                .putString(Settings.KEY_AI_MODEL, etAiModel.text.toString().trim())
                 .putBoolean(Settings.KEY_VERBOSE, swVerbose.isChecked)
                 .apply()
             Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
@@ -35,6 +44,9 @@ class SettingsActivity : AppCompatActivity() {
             p.edit().clear().apply()
             etRootfs.setText(Settings.rootfs(this))
             etLog.setText(Settings.log(this))
+            etAiBaseUrl.setText(Settings.aiBaseUrl(this))
+            etAiApiKey.setText("")
+            etAiModel.setText(Settings.aiModel(this))
             swVerbose.isChecked = false
             Toast.makeText(this, "已恢复默认", Toast.LENGTH_SHORT).show()
         }
